@@ -66,22 +66,23 @@
       font-size: 12px;
       color: #777;
     }
-    #result-page {
+    #result-page, #admin-login, #admin-panel {
       display: none;
     }
-    #result-page h2 {
-      margin-bottom: 20px;
-    }
-    #result-content p {
-      font-size: 18px;
-      margin: 10px 0;
-      font-weight: 600;
-    }
-    #exam-code {
+    table {
+      width: 100%;
+      border-collapse: collapse;
       margin-top: 20px;
-      font-weight: 700;
-      font-size: 20px;
-      color: #222;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    .actions button {
+      margin-right: 5px;
     }
   </style>
 </head>
@@ -89,30 +90,29 @@
   <div class="container" id="form-page">
     <h1>STARLUX Virtual Aviation</h1>
     <h2>飛行員轉正考核申請表</h2>
-
     <div id="pilot-form">
-      <label for="name">真實姓名 / 虛擬姓名</label>
+      <label for="name">姓名</label>
       <input type="text" id="name" name="name" required />
 
       <label for="discord">Discord ID（包含 #）</label>
       <input type="text" id="discord" name="discord" required />
 
-      <label for="pilot-id">飛行員代號（例如：STX123）</label>
+      <label for="pilot-id">飛行員代號（例如：SJX001）</label>
       <input type="text" id="pilot-id" name="pilot_id" required />
 
       <label for="current-rank">目前職級</label>
       <select id="current-rank" name="current_rank" required>
         <option value="">請選擇</option>
-        <option value="見習副機師">見習副機師</option>
-        <option value="副機師">副機師</option>
+        <option value="訓練成員">訓練成員</option>
       </select>
 
       <label for="self-assessment">自我評估 / 補充說明</label>
-      <textarea id="self-assessment" name="self_assessment" rows="4" placeholder="可說明你對飛行程序、溝通、紀律等方面的自評..."></textarea>
+      <textarea id="self-assessment" name="self_assessment" rows="4"></textarea>
 
       <p class="note">※ 申請送出後，審核小組將於 3~5 個工作日內回覆。</p>
 
       <button id="submit-btn" type="button">提交申請</button>
+      <button id="admin-access" type="button">管理員登入</button>
     </div>
   </div>
 
@@ -123,86 +123,134 @@
     <div id="exam-code"></div>
   </div>
 
+  <div class="container" id="admin-login">
+    <h2>管理員登入</h2>
+    <input type="password" id="admin-password" placeholder="請輸入管理員密碼">
+    <button onclick="verifyAdmin()">登入</button>
+  </div>
+
+  <div class="container" id="admin-panel">
+    <h2>申請資料總覽</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>姓名</th><th>Discord ID</th><th>代號</th><th>階級</th><th>自評</th><th>考試代碼</th><th>狀態</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="admin-table"></tbody>
+    </table>
+    <button onclick="exportCSV()">匯出 CSV</button>
+  </div>
+
   <script>
     const webhookUrl = "https://discord.com/api/webhooks/1381616410752454666/FFS3owJKcEUw8uHH3U1ltrlzds9-AhiaH00pWD9MdqA7lMWBX-HK9ARZX1PEuv4eQkgN";
 
     document.getElementById('submit-btn').addEventListener('click', function() {
-      // 取值
       const name = document.getElementById('name').value.trim();
       const discord = document.getElementById('discord').value.trim();
       const pilotId = document.getElementById('pilot-id').value.trim();
       const currentRank = document.getElementById('current-rank').value;
       const selfAssessment = document.getElementById('self-assessment').value.trim() || "無";
-
-      // 驗證必填欄位
-      if (!name) {
-        alert('請填寫真實姓名 / 虛擬姓名');
-        return;
-      }
-      if (!discord) {
-        alert('請填寫 Discord ID');
-        return;
-      }
-      if (!pilotId) {
-        alert('請填寫飛行員代號');
-        return;
-      }
-      if (!currentRank) {
-        alert('請選擇目前職級');
-        return;
-      }
-
-      // 產生五位隨機數字
+      if (!name || !discord || !pilotId || !currentRank) return alert("請完整填寫所有欄位");
       const randomNum = Math.floor(10000 + Math.random() * 90000);
       const examCode = `考試代碼：${randomNum}`;
 
-      // 組成要送到 Discord 的訊息內容
+      const data = { name, discord, pilotId, currentRank, selfAssessment, randomNum, status: "待審核" };
+      const records = JSON.parse(localStorage.getItem("applications") || "[]");
+      records.push(data);
+      localStorage.setItem("applications", JSON.stringify(records));
+
       const discordMessage = {
-        content: null,
+        content: "<@&1381628832041406595>",
+        allowed_mentions: { roles: ["1381628832041406595"] },
         embeds: [{
           title: "飛行員轉正考核申請表單",
           color: 7506394,
           fields: [
-            { name: "名稱", value: name, inline: false },
-            { name: "Discord ID", value: discord, inline: false },
-            { name: "飛行員代號", value: pilotId, inline: false },
-            { name: "目前階級", value: currentRank, inline: false },
-            { name: "自我評估", value: selfAssessment, inline: false },
-            { name: "考試代碼", value: randomNum.toString(), inline: false }
+            { name: "姓名", value: name },
+            { name: "Discord ID", value: discord },
+            { name: "飛行員代號", value: pilotId },
+            { name: "目前階級", value: currentRank },
+            { name: "自我評估", value: selfAssessment },
+            { name: "考試代碼", value: randomNum.toString() }
           ],
           timestamp: new Date().toISOString()
         }]
       };
 
-      // 送出 POST 請求到 Discord Webhook
       fetch(webhookUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(discordMessage)
-      }).then(response => {
-        if (!response.ok) {
-          alert("發送到 Discord 失敗！");
-          return;
-        }
-        // 顯示結果
+      }).then(res => {
+        if (!res.ok) return alert("發送到 Discord 失敗！");
+        document.getElementById('form-page').style.display = 'none';
+        document.getElementById('result-page').style.display = 'block';
         document.getElementById('result-content').innerHTML = `
-          <p><strong>名稱：</strong> ${name}</p>
+          <p><strong>姓名：</strong> ${name}</p>
           <p><strong>DISCORD ID：</strong> ${discord}</p>
           <p><strong>飛行員代號：</strong> ${pilotId}</p>
           <p><strong>目前階級：</strong> ${currentRank}</p>
-          <p><strong>自我評估：</strong> ${selfAssessment}</p>
-        `;
+          <p><strong>自我評估：</strong> ${selfAssessment}</p>`;
         document.getElementById('exam-code').textContent = examCode;
-
-        // 切換畫面
-        document.getElementById('form-page').style.display = 'none';
-        document.getElementById('result-page').style.display = 'block';
-      }).catch(error => {
-        alert("發送到 Discord 發生錯誤: " + error.message);
       });
     });
+
+    document.getElementById("admin-access").onclick = () => {
+      document.getElementById("form-page").style.display = "none";
+      document.getElementById("admin-login").style.display = "block";
+    };
+
+    function verifyAdmin() {
+      const pw = document.getElementById("admin-password").value;
+      if (pw === "starlux123") {
+        document.getElementById("admin-login").style.display = "none";
+        document.getElementById("admin-panel").style.display = "block";
+        loadAdminTable();
+      } else alert("密碼錯誤！");
+    }
+
+    function loadAdminTable() {
+      const tbody = document.getElementById("admin-table");
+      tbody.innerHTML = "";
+      const records = JSON.parse(localStorage.getItem("applications") || "[]");
+      records.forEach((r, i) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.name}</td><td>${r.discord}</td><td>${r.pilotId}</td><td>${r.currentRank}</td><td>${r.selfAssessment}</td><td>${r.randomNum}</td>
+          <td>${r.status}</td><td class="actions">
+          <button onclick="updateStatus(${i}, '通過')">通過</button>
+          <button onclick="updateStatus(${i}, '駁回')">駁回</button>
+          <button onclick="deleteRecord(${i})">刪除</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateStatus(index, status) {
+      const records = JSON.parse(localStorage.getItem("applications") || "[]");
+      records[index].status = status;
+      localStorage.setItem("applications", JSON.stringify(records));
+      loadAdminTable();
+    }
+
+    function deleteRecord(index) {
+      const records = JSON.parse(localStorage.getItem("applications") || "[]");
+      records.splice(index, 1);
+      localStorage.setItem("applications", JSON.stringify(records));
+      loadAdminTable();
+    }
+
+    function exportCSV() {
+      const records = JSON.parse(localStorage.getItem("applications") || "[]");
+      let csv = "姓名,Discord ID,代號,階級,自評,考試代碼,狀態\n";
+      records.forEach(r => {
+        csv += `${r.name},${r.discord},${r.pilotId},${r.currentRank},${r.selfAssessment},${r.randomNum},${r.status}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "applications.csv";
+      a.click();
+    }
   </script>
 </body>
 </html>
